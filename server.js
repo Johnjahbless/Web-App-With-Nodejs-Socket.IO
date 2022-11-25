@@ -1,5 +1,6 @@
 const express = require("express");
 const bodyParser = require("body-parser");
+const mongoose = require("mongoose");
 
 const app = express();
 
@@ -11,23 +12,70 @@ app.use(express.static(__dirname));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({extended: false}))
 
-let messages = [{
-    name: "Tim",
-    message: "Hello"},
-    {
-    name: "John",
-    message: "Hello"
-}]
+mongoose.Promise = Promise;
+
+const dburl = "Your cluster DB URL here"
+
+const Message = mongoose.model("Message", {
+    name: String,
+    message: String
+})
+
+
+mongoose.connect(dburl, err => {
+    if (err) {
+        console.log(err)
+    } else {
+        console.log("connected")
+    }
+})
 
 app.get("/messages", (req, res) => {
-    res.send(messages);
+    Message.find({}, (err, messages) => {
+        if (err) {
+            console.log(err)
+            sendStatus(500)
+        } else {
+            res.send(messages);
+        }
+    })
+    
 });
 
 
-app.post("/messages", (req, res) => {
-    messages.push(req.body);
-    io.emit("message", req.body);
-    res.sendStatus(200);
+app.get("/messages/:user", (req, res) => {
+    const { user } = req.params;
+
+    Message.find({name: user}, (err, messages) => {
+        if (err) {
+            console.log(err)
+            sendStatus(500)
+        } else {
+            res.send(messages);
+        }
+    })
+    
+});
+
+
+app.post("/messages", async (req, res) => {
+    let message = new Message(req.body);
+    try {
+   
+    const saveMessage = await message.save();
+    const censored =  await Message.findOne({message: 'badword'}); 
+        if (censored) 
+         await Message.remove({_id: censored._id});
+        else
+            io.emit("message", req.body);
+    
+        res.sendStatus(200);
+            
+    } catch (error) {
+        console.log(error);
+        res.sendStatus(500)
+    }
+    
 })
 
 io.on("connection", socket => {
